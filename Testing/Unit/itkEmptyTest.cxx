@@ -1,5 +1,9 @@
+#include <gtest/gtest.h>
+
+
 // This file is a minimalistic test.
-int main()
+TEST(Trivial, Empty)
 {
-  return 0;
+  // Call the Google Test macro to indicate this test passed.
+  SUCCEED();
 }
