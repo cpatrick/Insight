@@ -35,6 +35,7 @@
 #include <gtest/gtest.h>
 
 #include <iostream>
+#include <vector>
 
 // We must define this macro in order to #include
 // gtest-internal-inl.h.  This is how Google Test prevents a user from
@@ -48,23 +49,15 @@
 namespace testing {
 namespace {
 
+using internal::Notification;
 using internal::String;
 using internal::TestPropertyKeyIs;
-using internal::Vector;
+using internal::ThreadWithParam;
+using internal::scoped_ptr;
 
 // In order to run tests in this file, for platforms where Google Test is
-// thread safe, implement ThreadWithParam with the following interface:
-//
-// template <typename T> class ThreadWithParam {
-//  public:
-//   // Creates the thread. The thread should execute thread_func(param) when
-//   // started by a call to Start().
-//   ThreadWithParam(void (*thread_func)(T), T param);
-//   // Starts the thread.
-//   void Start();
-//   // Waits for the thread to finish.
-//   void Join();
-// };
+// thread safe, implement ThreadWithParam. See the description of its API
+// in gtest-port.h, where it is defined for already supported platforms.
 
 // How many threads to create?
 const int kThreadCount = 50;
@@ -81,12 +74,13 @@ String IdToString(int id) {
   return id_message.GetString();
 }
 
-void ExpectKeyAndValueWereRecordedForId(const Vector<TestProperty>& properties,
-                                        int id,
-                                        const char* suffix) {
+void ExpectKeyAndValueWereRecordedForId(
+    const std::vector<TestProperty>& properties,
+    int id, const char* suffix) {
   TestPropertyKeyIs matches_key(IdToKey(id, suffix).c_str());
-  const TestProperty* property = properties.FindIf(matches_key);
-  ASSERT_TRUE(property != NULL)
+  const std::vector<TestProperty>::const_iterator property =
+      std::find_if(properties.begin(), properties.end(), matches_key);
+  ASSERT_TRUE(property != properties.end())
       << "expecting " << suffix << " value for id " << id;
   EXPECT_STREQ(IdToString(id).c_str(), property->value());
 }
@@ -132,33 +126,30 @@ void CheckTestFailureCount(int expected_failures) {
 // Tests using SCOPED_TRACE() and Google Test assertions in many threads
 // concurrently.
 TEST(StressTest, CanUseScopedTraceAndAssertionsInManyThreads) {
-  ThreadWithParam<int>* threads[kThreadCount] = {};
-  for (int i = 0; i != kThreadCount; i++) {
-    // Creates a thread to run the ManyAsserts() function.
-    threads[i] = new ThreadWithParam<int>(&ManyAsserts, i);
+  {
+    scoped_ptr<ThreadWithParam<int> > threads[kThreadCount];
+    Notification threads_can_start;
+    for (int i = 0; i != kThreadCount; i++)
+      threads[i].reset(new ThreadWithParam<int>(&ManyAsserts,
+                                                i,
+                                                &threads_can_start));
 
-    // Starts the thread.
-    threads[i]->Start();
-  }
+    threads_can_start.Notify();
 
-  // At this point, we have many threads running.
-
-  for (int i = 0; i != kThreadCount; i++) {
-    // We block until the thread is done.
-    threads[i]->Join();
-    delete threads[i];
-    threads[i] = NULL;
+    // Blocks until all the threads are done.
+    for (int i = 0; i != kThreadCount; i++)
+      threads[i]->Join();
   }
 
   // Ensures that kThreadCount*kThreadCount failures have been reported.
   const TestInfo* const info = UnitTest::GetInstance()->current_test_info();
   const TestResult* const result = info->result();
 
-  Vector<TestProperty> properties;
+  std::vector<TestProperty> properties;
   // We have no access to the TestResult's list of properties but we can
   // copy them one by one.
   for (int i = 0; i < result->test_property_count(); ++i)
-    properties.PushBack(result->GetTestProperty(i));
+    properties.push_back(result->GetTestProperty(i));
 
   EXPECT_EQ(kThreadCount * 2 + 1, result->test_property_count())
       << "String and int values recorded on each thread, "
@@ -180,8 +171,7 @@ void FailingThread(bool is_fatal) {
 }
 
 void GenerateFatalFailureInAnotherThread(bool is_fatal) {
-  ThreadWithParam<bool> thread(&FailingThread, is_fatal);
-  thread.Start();
+  ThreadWithParam<bool> thread(&FailingThread, is_fatal, NULL);
   thread.Join();
 }
 
