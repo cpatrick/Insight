@@ -1,0 +1,9 @@
+.git*   export-ignore
+
+# binary is a macro = -crlf -diff
+*.jpg   binary
+*.jpeg  binary
+
+# here are attributes to be able to compare image!!!
+*.png diff=exif
+*.jpg diff=exif
