@@ -3,6 +3,11 @@
 option ( RUN_LONG_TESTS "Run long tests.  Some tests have been identified as long running, should these be run?" OFF )
 
 # Build Google Test
+find_package(Threads)
+if (CMAKE_USE_PTHREADS_INIT)  # The pthreads library is available.
+  set(cxx_base_flags "${cxx_base_flags} -DGTEST_HAS_PTHREAD=1")
+endif()
+
 # The gtest include file directories.
 SET(GTEST_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/GoogleTest/include" PARENT_SCOPE)
 
@@ -23,6 +28,9 @@ include_directories ( GoogleTest/include )
 include_directories ( GoogleTest )
 add_library(gtest ${GTestSource})
 link_libraries(gtest)
+if (CMAKE_USE_PTHREADS_INIT)
+  target_link_libraries(gtest ${CMAKE_THREAD_LIBS_INIT})
+endif()
 
 
 set ( TestSource itkEmptyTest.cxx )
